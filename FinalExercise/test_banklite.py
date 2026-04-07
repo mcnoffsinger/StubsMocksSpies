@@ -1,5 +1,5 @@
 from banklite import PaymentProcessor, Transaction, FraudAwareProcessor
-from banklite import FraudCheckResult
+from banklite import FraudCheckResult, StatementBuilder, PaymentGateway
 import unittest
 from unittest.mock import MagicMock
 
@@ -193,7 +193,73 @@ class TestFraudAwareProcessor(unittest.TestCase):
 ################# TASK THREE ########################################
     
 
-    
+class TestStatementBuilder(unittest.TestCase):
+    def setUp(self):
+        self.repo    = MagicMock()
+        self.builder = StatementBuilder(self.repo)
+
+
+    def test_empty_transaction_list_returns_zero_totals(self):
+        self.repo.find_by_user.return_value = []
+        result = self.builder.build(user_id = 67)
+
+        self.assertEqual(result["count"], 0)
+        self.assertEqual(result["total_charged"], 0.0)
+        self.assertIsInstance(result["transactions"], list) 
+
+    def test_only_success_transactions_are_counted_in_total(self):
+        
+        txlist = [
+            Transaction("TX1", 67, 100.00, status="success"),
+            Transaction("TX2", 67,  50.00, status="declined"),  
+            Transaction("TX3", 67, 200.00, status="success"),
+            Transaction("TX4", 67,  75.00, status="pending"), 
+        ]
+        self.repo.find_by_user.return_value = txlist
+
+        result = self.builder.build(user_id=67)
+
+        self.assertEqual(result["total_charged"], 300.00)  
+        self.assertEqual(result["count"], 4)               
+
+    def test_all_success_transactions_summed(self):
+       
+        txlist = [
+            Transaction("TX1", 666, 99.99,  status="success"),
+            Transaction("TX2", 666,  0.01,  status="success"), 
+            Transaction("TX3", 666, 450.00, status="success"),
+        ]
+        self.repo.find_by_user.return_value = txlist
+
+        result = self.builder.build(user_id=666)
+
+        self.assertEqual(result["total_charged"], 550.00)  # 99.99 + 0.01 + 450
+
+    def test_total_is_rounded_to_two_decimal_places(self):
+        
+        
+        txlist = [
+            Transaction("TX1", 3, 10.555, status="success"),
+            Transaction("TX2", 3,  0.005, status="success"),
+        ]
+        self.repo.find_by_user.return_value = txlist
+
+        result = self.builder.build(user_id=3)
+
+        self.assertEqual(result["total_charged"], 10.56)  # 10.555 + 0.005, rounded
+
+    def test_transactions_list_is_returned_unchanged(self):
+        
+        txlist = [Transaction("TX1", 4, 100.00, status="success")]
+        self.repo.find_by_user.return_value = txlist
+
+        result = self.builder.build(user_id=4)
+
+        self.assertIs(result["transactions"], txlist)
+
+
+
+
 
     
     
